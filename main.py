@@ -1,6 +1,7 @@
 import tkinter as tk
 from tkinter import filedialog, Text, RIGHT, Y, messagebox
 from collections import deque
+import pandas as pd
 import cv2
 from PIL import Image, ImageTk
 from ultralytics import YOLO
@@ -56,14 +57,22 @@ class VideoPlayer:
         self.error_window_size = 7
         self.entered_just_now = False
         self.entered = 0
+        self.df = None
 
     def get_color(self, point, frame):
         self.hsv_ranges = {
-            'yellow': ([0, 94, 43], [62, 255, 203]),
+            'yellow': ([0, 94, 43], [50, 255, 203]),
             'pink': ([0, 90, 163], [31, 255, 255]),
-            'green': ([61, 82, 9], [116, 255, 144]),
+            'green': ([50, 82, 9], [116, 255, 144]),
             'white': ([0, 0, 70], [65, 105, 255])
         }
+
+        # self.hsv_ranges = {
+        #     'yellow': ([20, 100, 100], [30, 255, 255]),
+        #     'pink': ([140, 100, 100], [170, 255, 255]),
+        #     'green': ([35, 100, 100], [85, 255, 255]),
+        #     'white': ([0, 0, 200], [180, 20, 255])
+        # }
 
         x, y = point
         rgb = frame[y, x]
@@ -103,6 +112,18 @@ class VideoPlayer:
                             # print(self.frame_number, "---------", error_window)
                             color = list(self.colors.keys())[list(self.colors.values()).index(j+1)]
                             self.print_text(f"Frame: {self.frame_number}\nExit of {color}")
+
+                            # self.df.append({'Time (sec)': int(self.frame_number/self.fps), 
+                            #                 'Color': color, 
+                            #                 'Event': 'Exit', 
+                            #                 'Quadrant': j+1}, 
+                            #                 ignore_index=True)
+                            
+                            self.df = pd.concat([pd.DataFrame([[int(self.frame_number/self.fps),
+                                                                color,
+                                                                "Exit",
+                                                                j+1]], 
+                                                                columns=self.df.columns), self.df], ignore_index=True)
                             self.colors[color] = 0
                     continue
 
@@ -155,14 +176,16 @@ class VideoPlayer:
             return
         
         self.vid = cv2.VideoCapture(self.video_source)
-        self.vid.set(cv2.CAP_PROP_POS_FRAMES, 1500)
-        fps = self.vid.get(cv2.CAP_PROP_FPS)
-        self.delay = int(1000 / fps) if fps > 0 else 25
+        self.writer = cv2.VideoWriter("processed_vid.mp4", cv2.VideoWriter_fourcc(*'mp4v'), 30, (600, 400))
+        #self.vid.set(cv2.CAP_PROP_POS_FRAMES, 1500)
+        self.fps = self.vid.get(cv2.CAP_PROP_FPS)
         self.delay = 5
         if not self.vid.isOpened():
             messagebox.showerror("Error", "Unable to open the video file.")
         else:
             self.stop = False
+            self.df = pd.DataFrame(columns=['Time (sec)', 'Color', 'Event', 'Quadrant'])
+            self.print_text("Video opened successfully.\nSaving logs to 'log.csv'")
             self.play_video()
 
     def play_video(self):
@@ -248,17 +271,40 @@ class VideoPlayer:
 
                     #print(f"Status at {quad_status}: {i} i and frame {self.frame_number}")
 
+                    # if quad_status[1] == 'entry':
+                    #     self.print_text("Attempting entry: \n\t" + str(self.get_color(center, frame)[2][0]) + ", " + str(self.get_color(center, frame)[2][1]) + ", " + str(self.get_color(center, frame)[2][2]))
+                    #     if not self.entered_just_now:
+                    #         print(self.get_color(center, frame)[2])
+                    #         if self.colors[self.get_color(center, frame)[0]] == 0:
+                    #             self.print_text(f"Frame: {self.frame_number}\nEntry of {self.get_color(center, frame)[0]} in Quadrant {quad_status[0] + 1}")
+                    #             self.colors[self.get_color(center, frame)[0]] = quad_status[0] + 1
+                    #             self.entered_just_now = True
+
                     if quad_status[1] == 'entry' and not self.entered_just_now:
                         self.print_text(str(self.get_color(center, frame)[2][0]) + ", " + str(self.get_color(center, frame)[2][1]) + ", " + str(self.get_color(center, frame)[2][2]))
                         print(self.get_color(center, frame)[2])
                         if self.colors[self.get_color(center, frame)[0]] == 0:
-                            self.print_text(f"Frame: {self.frame_number}\nEntry of {self.get_color(center, frame)[0]} in Quadrant {quad_status[0] + 1}")
+                            color = self.get_color(center, frame)[0]
+
+                            self.print_text(f"Frame: {self.frame_number}\nEntry of {color} in Quadrant {quad_status[0] + 1}")
+                            # self.df.append({'Time (sec)': int(self.frame_number/self.fps), 
+                            #                 'Color': color, 
+                            #                 'Event': 'Entry', 
+                            #                 'Quadrant': quad_status[0]+1}, 
+                            #                 ignore_index=True)
+                            
+                            self.df = pd.concat([pd.DataFrame([[int(self.frame_number/self.fps),
+                                                                color,
+                                                                "Entry",
+                                                                quad_status[0]+1]], 
+                                                                columns=self.df.columns), self.df], ignore_index=True)
+                                                        
                             self.colors[self.get_color(center, frame)[0]] = quad_status[0] + 1
                             self.entered_just_now = True
 
                 if self.entered_just_now:
                     self.entered += 1
-                    if self.entered > 90:
+                    if self.entered > 105:
                         self.entered_just_now = False
                         self.entered = 0
 
@@ -279,14 +325,18 @@ class VideoPlayer:
                 self.frame_number += 1
 
                 image = Image.fromarray(frame)
+                self.writer.write(frame)
                 image_tk = ImageTk.PhotoImage(image=image)
                 self.canvas.create_image(0, 0, anchor=tk.NW, image=image_tk)
                 self.canvas.image_tk = image_tk
                 self.root.after(self.delay, self.update_frame)
             else:
+                self.df.to_csv("log.csv", index=False)
                 self.vid.release()
+                self.writer.release()
                 self.canvas.image_tk = None
                 self.print_text("Video has ended.")
+                self.print_text("Log file saved as 'log.csv'")
 
     def print_text(self, text):
         self.text_area.config(state='normal')
@@ -294,8 +344,14 @@ class VideoPlayer:
         self.text_area.config(state='disabled')
         self.text_area.see(tk.END)
 
+    def terminate(self):
+        if self.df is not None:
+            self.df.to_csv("log.csv", index=False)
+        root.destroy()
+
 
 if __name__ == "__main__":
     root = tk.Tk()
     player = VideoPlayer(root)
+    root.protocol("WM_DELETE_WINDOW", player.terminate)
     root.mainloop()
