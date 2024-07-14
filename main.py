@@ -176,7 +176,7 @@ class VideoPlayer:
             return
         
         self.vid = cv2.VideoCapture(self.video_source)
-        self.writer = cv2.VideoWriter("processed_vid.mp4", cv2.VideoWriter_fourcc(*'mp4v'), 30, (600, 400))
+        self.writer = cv2.VideoWriter("saved\\processed_vid.mp4", cv2.VideoWriter_fourcc(*'mp4v'), 30, (600, 400))
         #self.vid.set(cv2.CAP_PROP_POS_FRAMES, 1500)
         self.fps = self.vid.get(cv2.CAP_PROP_FPS)
         self.delay = 5
@@ -331,12 +331,12 @@ class VideoPlayer:
                 self.canvas.image_tk = image_tk
                 self.root.after(self.delay, self.update_frame)
             else:
-                self.df.to_csv("log.csv", index=False)
+                self.df.to_csv("saved\\log.csv", index=False)
                 self.vid.release()
                 self.writer.release()
                 self.canvas.image_tk = None
                 self.print_text("Video has ended.")
-                self.print_text("Log file saved as 'log.csv'")
+                self.print_text("Log file saved as 'log.csv' in saved folder.")
 
     def print_text(self, text):
         self.text_area.config(state='normal')
@@ -346,7 +346,7 @@ class VideoPlayer:
 
     def terminate(self):
         if self.df is not None:
-            self.df.to_csv("log.csv", index=False)
+            self.df.to_csv("saved\\log.csv", index=False)
         root.destroy()
 
 
